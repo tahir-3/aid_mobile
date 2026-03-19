@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getSyncedData, STORAGE_KEYS } from '../lib/sync';
-
+import * as Clipboard from 'expo-clipboard'
 // Personal info fields (before wife section) - exclude Section Break, Column Break, Tab, attachments
 const PERSONAL_FIELDS = [
   { key: 'full_name', label: 'الاسم الكامل', icon: 'person-outline' as const },
@@ -46,6 +46,7 @@ const PERSONAL_FIELDS = [
   { key: 'accommodation_name', label: 'اسم السكن', icon: 'home-outline' as const },
   { key: 'type_of_damage', label: 'نوع الضرر', icon: 'alert-circle-outline' as const },
   { key: 'other_needs', label: 'احتياجات أخرى', icon: 'ellipsis-horizontal-outline' as const },
+  { key: 'family_members', label: 'الأطفال', icon: 'ellipsis-horizontal-outline' as const },
 ];
 
 const WIFE_FIELDS = [
@@ -58,6 +59,17 @@ const WIFE_FIELDS = [
   { key: 'pregnant', label: 'مرضعة/حامل', icon: 'heart-outline' as const },
 ];
 
+const CHILD_FIELDS = [
+  { key: 'child_date_of_birth', label: 'تاريخ الميلاد', icon: 'person-outline' as const },
+  { key: 'child_id_no', label: 'الهوية', icon: 'person-outline' as const },
+  { key: 'child_relationship', label: 'الصلة', icon: 'person-outline' as const },
+  { key: 'child_full_name', label: 'الاسم', icon: 'person-outline' as const },
+]
+const copyToClipboard = async (value:string) => {
+  if(!value)return
+    await Clipboard.setStringAsync(value);
+};
+
 function DetailRow({
   label,
   value,
@@ -69,7 +81,7 @@ function DetailRow({
 }) {
   if (value == null || value === '') return null;
   return (
-    <View className="mb-4 flex-row items-center justify-between">
+    <TouchableOpacity activeOpacity={.7} onPress={()=> copyToClipboard(value as string)} className="mb-4 flex-row items-center justify-between">
       <Text className="flex-1 text-right font-bold text-white" numberOfLines={2}>
         {String(value)}
       </Text>
@@ -77,7 +89,7 @@ function DetailRow({
         <Text className="ml-2 text-sm text-slate-500">{label}</Text>
         <Ionicons name={icon as any} size={18} color="#94A3B8" />
       </View>
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -153,10 +165,10 @@ export default function RecipientDetailsScreen() {
       </SafeAreaView>
     );
   }
-
+console.log(recipient.family_members)
   const displayName = recipient.full_name ?? recipient.recipient_name ?? recipient.name;
   const familyMembers = Array.isArray(recipient.family_members) ? recipient.family_members : [];
-  const sysKeys = ['name', 'owner', 'creation', 'modified', 'parent', 'parenttype', 'parentfield', 'docstatus', 'idx'];
+  const sysKeys = ['name', 'id', 'owner', 'creation', 'modified', 'parent', 'parenttype', 'parentfield', 'docstatus', 'idx'];
   const childCols = familyMembers[0]
     ? Object.keys(familyMembers[0]).filter((k) => !sysKeys.includes(k))
     : [];
@@ -221,9 +233,9 @@ export default function RecipientDetailsScreen() {
                 <View style={{ minWidth: Math.max(width - 32, childCols.length * 110) }}>
                   {/* Header row */}
                   <View className="flex-row border-b border-white/10 bg-slate-800/30 px-4 py-3">
-                    {childCols.map((col) => (
-                      <View key={col} className="min-w-[100px] flex-1">
-                        <Text className="text-[10px] font-bold text-slate-400">{col}</Text>
+                    {CHILD_FIELDS.map((col) => (
+                      <View key={col.key} className="min-w-[100px] flex-1">
+                        <Text className="text-[10px] font-bold text-slate-400 text-right">{col.label}</Text>
                       </View>
                     ))}
                   </View>
@@ -231,10 +243,10 @@ export default function RecipientDetailsScreen() {
                     <View
                       key={idx}
                       className="flex-row border-b border-white/5 px-4 py-3">
-                      {childCols.map((col) => (
-                        <View key={col} className="min-w-[100px] flex-1">
+                      {CHILD_FIELDS.map((col) => (
+                        <View key={col.key} className="min-w-[100px] flex-1">
                           <Text className="text-right text-sm text-white" numberOfLines={2}>
-                            {row[col] ?? '—'}
+                            {row[col.key] ?? '—'}
                           </Text>
                         </View>
                       ))}

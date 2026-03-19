@@ -71,9 +71,9 @@ export default function AidDetailsScreen() {
   const getStatusStyle = (status?: string) => {
     switch (status) {
       case 'مستفيد':
-        return 'bg-success/10 text-success';
+        return 'bg-success text-white';
       case 'مرشح':
-        return 'bg-warning/10 text-warning';
+        return 'bg-warning text-white';
       default:
         return 'bg-slate-700/30 text-slate-400';
     }
@@ -129,8 +129,8 @@ export default function AidDetailsScreen() {
                       </Text>
                     )}
                   </View>
-                  <View className="mr-4 flex-row items-center">
-                    <Text className="ml-2 text-sm text-slate-500">{f.label}</Text>
+                  <View className="mr-4 flex-row items-center gap-1">
+                    <Text className="ml-2 text-sm font-semibold text-emerald-500">{f.label}: </Text>
                     <Ionicons name={f.icon} size={18} color="#94A3B8" />
                   </View>
                 </View>

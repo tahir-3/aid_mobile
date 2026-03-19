@@ -1,7 +1,9 @@
 import '../global.css';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-
-import { Stack } from 'expo-router';
+import { Stack, useRouter, useSegments } from 'expo-router';
+import { useEffect, useState } from 'react';
+import { useAuthStore } from '../store/authStore';
+import { ActivityIndicator } from 'react-native';
 
 export const unstable_settings = {
   // Ensure that reloading on `/modal` keeps a back button present.
@@ -9,11 +11,47 @@ export const unstable_settings = {
 };
 
 export default function RootLayout() {
+  const { isAuthenticated, initialize } = useAuthStore();
+  const segments = useSegments();
+  const router = useRouter();
+  const [isReady, setIsReady] = useState(false);
+
+  useEffect(() => {
+    const init = async () => {
+      await initialize();
+      setIsReady(true);
+    };
+    init();
+  }, [initialize]);
+
+  useEffect(() => {
+    if (!isReady) return;
+
+    const inAuthGroup = segments[0] === 'login';
+
+    if (!isAuthenticated && !inAuthGroup) {
+      // Redirect to the login page if the user is not authenticated
+      router.replace('/login');
+    } else if (isAuthenticated && inAuthGroup) {
+      // Redirect to the home page if the user is authenticated and on the login page
+      router.replace('/(tabs)');
+    }
+  }, [isAuthenticated, segments, router, isReady]);
+
+  if (!isReady) {
+    return <ActivityIndicator color={"#143A6B"} size={40} />; // Or a splash screen / loading spinner
+  }
+
   return (
     <SafeAreaProvider>
       <Stack>
+        <Stack.Screen name="login" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="recipient-details" options={{ headerShown: false }} />
+        <Stack.Screen name="aid-details" options={{ headerShown: false }} />
+        <Stack.Screen name="new-aid" options={{ headerShown: false }} />
+        <Stack.Screen name="new-recipient" options={{ headerShown: false }} />
       </Stack>
     </SafeAreaProvider>
   );

@@ -1,10 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
-import React, { useCallback, useMemo, useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, FlatList, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getSyncedData, STORAGE_KEYS } from '../../lib/sync';
+import { getAidsPaginated, getAidsCount } from '../../lib/sync';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface AidRecord {
@@ -29,7 +29,7 @@ const CATEGORIES = [
   { id: 'candidate', label: 'مرشح', field: 'eligibility_status', value: 'مرشح' },
 ];
 
-const PAGE_SIZE = 15;
+const PAGE_SIZE = 20;
 
 // ─── Status Display Helpers ───────────────────────────────────────────────────
 const getStatusStyle = (status?: string) => {
@@ -50,14 +50,14 @@ const getNatureIcon = (nature?: string): any => {
 };
 
 // ─── AID Card ─────────────────────────────────────────────────────────────────
-const AidCard = React.memo(({ item, onPress }: { item: AidRecord; onPress: () => void }) => {
+const AidCard = React.memo(({ item, onPress }: { item: AidRecord; onPress: (item: AidRecord) => void }) => {
   const status = getStatusStyle(item.eligibility_status);
   const isPendingSync = item.created_locally === true || item.synced === false;
 
   return (
     <TouchableOpacity
       activeOpacity={0.7}
-      onPress={onPress}
+      onPress={() => onPress(item)}
       className={`mb-4 rounded-3xl border bg-surface p-5 ${
         isPendingSync ? 'border-orange-500/30' : 'border-white/5'
       }`}>
@@ -130,18 +130,32 @@ const AidCard = React.memo(({ item, onPress }: { item: AidRecord; onPress: () =>
 export default function Home() {
   const router = useRouter();
 
-  const [allAids, setAllAids] = useState<AidRecord[]>([]);
+  const [aids, setAids] = useState<AidRecord[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState('all');
-  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
 
-  const loadAids = useCallback(async () => {
-    setLoading(true);
-    const data = await getSyncedData(STORAGE_KEYS.AID);
-    setAllAids(Array.isArray(data) ? data : []);
-    setLoading(false);
-  }, []);
+  const loadAids = useCallback(
+    async () => {
+      const cat = CATEGORIES.find((c) => c.id === activeCategory);
+      setLoading(true);
+      const opts = {
+        search: search.trim() || undefined,
+        categoryField: cat?.field ?? undefined,
+        categoryValue: cat?.value ?? undefined,
+      };
+      const [data, count] = await Promise.all([
+        getAidsPaginated(PAGE_SIZE, 0, opts),
+        getAidsCount(opts),
+      ]);
+      setAids(data as AidRecord[]);
+      setTotalCount(count);
+      setLoading(false);
+    },
+    [search, activeCategory]
+  );
 
   useEffect(() => {
     loadAids();
@@ -153,62 +167,49 @@ export default function Home() {
     }, [loadAids])
   );
 
-  // Filter: category + search
-  const filtered = useMemo(() => {
+  const loadMore = useCallback(async () => {
+    if (loadingMore || aids.length >= totalCount || aids.length === 0) return;
     const cat = CATEGORIES.find((c) => c.id === activeCategory);
-    let result = allAids;
-
-    if (cat && cat.field && cat.value) {
-      result = result.filter((a) => (a as any)[cat.field!] === cat.value);
-    }
-
-    if (search.trim()) {
-      const q = search.trim().toLowerCase();
-      result = result.filter(
-        (a) =>
-          a.name?.toLowerCase().includes(q) ||
-          a.recipient?.toLowerCase().includes(q) ||
-          a.organization_name?.toLowerCase().includes(q)
-      );
-    }
-
-    return result;
-  }, [allAids, activeCategory, search]);
-
-  // Paginated slice
-  const paginated = useMemo(() => filtered.slice(0, page * PAGE_SIZE), [filtered, page]);
-
-  const loadMore = useCallback(() => {
-    if (paginated.length < filtered.length) {
-      setPage((p) => p + 1);
-    }
-  }, [paginated.length, filtered.length]);
+    setLoadingMore(true);
+    const opts = {
+      search: search.trim() || undefined,
+      categoryField: cat?.field ?? undefined,
+      categoryValue: cat?.value ?? undefined,
+    };
+    const data = await getAidsPaginated(PAGE_SIZE, aids.length, opts);
+    setAids((prev) => [...prev, ...(data as AidRecord[])]);
+    setLoadingMore(false);
+  }, [aids.length, totalCount, loadingMore, search, activeCategory]);
 
   const onCategoryPress = (id: string) => {
     setActiveCategory(id);
-    setPage(1);
   };
 
   const onSearchChange = (text: string) => {
     setSearch(text);
-    setPage(1);
   };
 
-  const renderItem = useCallback(
-    ({ item }: { item: AidRecord }) => (
-      <AidCard item={item} onPress={() => router.push({ pathname: '/aid-details', params: { id: item.name } })} />
-    ),
+  const handleItemPress = useCallback(
+    (item: AidRecord) => {
+      router.push({ pathname: '/aid-details', params: { id: item.name } });
+    },
     [router]
   );
 
-  const renderFooter = useCallback(() => {
-    if (paginated.length >= filtered.length) return null;
-    return (
-      <View className="items-center py-4">
-        <ActivityIndicator color="#FF6F20" />
-      </View>
-    );
-  }, [paginated.length, filtered.length]);
+  const renderItem = useCallback(
+    ({ item }: { item: AidRecord }) => <AidCard item={item} onPress={handleItemPress} />,
+    [handleItemPress]
+  );
+
+  const renderFooter = useCallback(
+    () =>
+      aids.length < totalCount && aids.length > 0 ? (
+        <View className="items-center py-4">
+          <ActivityIndicator color="#FF6F20" />
+        </View>
+      ) : null,
+    [aids.length, totalCount]
+  );
 
   const renderEmpty = useCallback(
     () =>
@@ -224,14 +225,14 @@ export default function Home() {
   return (
     <SafeAreaView className="flex-1 bg-background">
       {/* Header */}
-      <View className="mt-2 flex-row items-center justify-between px-4 py-4">
-        <TouchableOpacity>
+      <View className="mt-2 flex-row items-center justify-center px-4 py-4">
+        {/* <TouchableOpacity>
           <Ionicons name="notifications" size={24} color="white" />
-        </TouchableOpacity>
-        <Text className="text-xl font-bold text-white">قائمة المساعدات</Text>
-        <TouchableOpacity>
+        </TouchableOpacity> */}
+        <Text className="text-4xl font-bold text-white">قائمة المساعدات</Text>
+        {/* <TouchableOpacity>
           <Ionicons name="menu" size={24} color="white" />
-        </TouchableOpacity>
+        </TouchableOpacity> */}
       </View>
 
       {/* Search */}
@@ -276,7 +277,7 @@ export default function Home() {
 
       {/* Total Count */}
       {!loading && (
-        <Text className="mb-2 px-5 text-right text-xs text-slate-500">{filtered.length} نتيجة</Text>
+        <Text className="mb-2 px-5 text-right text-xs text-slate-500">{totalCount} نتيجة</Text>
       )}
 
       {/* List */}
@@ -287,7 +288,7 @@ export default function Home() {
         </View>
       ) : (
         <FlatList
-          data={paginated}
+          data={aids}
           keyExtractor={(item) => item.name}
           renderItem={renderItem}
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100 }}
@@ -296,6 +297,10 @@ export default function Home() {
           ListFooterComponent={renderFooter}
           ListEmptyComponent={renderEmpty}
           showsVerticalScrollIndicator={false}
+          initialNumToRender={20}
+          maxToRenderPerBatch={10}
+          windowSize={5}
+          removeClippedSubviews
         />
       )}
 
