@@ -24,6 +24,7 @@ import {
 } from '../components/FormComponents';
 import { upsertRecipient } from '../lib/db';
 import { getSyncedData, STORAGE_KEYS } from '../lib/sync';
+import { Stagger } from '../components/motion/Enter';
 
 // Date formatting helper
 const formatDate = (d: Date | null) =>
@@ -240,240 +241,244 @@ export default function NewRecipientScreen() {
           className="px-5"
           contentContainerStyle={{ paddingBottom: 60 }}
           keyboardShouldPersistTaps="handled">
-          {/* 1. Full name */}
-          <View className="mb-5">
-            <FieldLabel label="الاسم الكامل" required />
-            <TextInput
-              value={fullName}
-              onChangeText={setFullName}
-              placeholder="أدخل الاسم الكامل"
-              placeholderTextColor="#64748B"
-              className={`rounded-2xl border px-4 py-4 text-right text-white ${
-                errors.fullName ? 'border-red-500/60 bg-red-900/10' : 'border-white/10 bg-surface'
-              }`}
-            />
-          </View>
-
-          {/* 2. ID number (9 digits) */}
-          <View className="mb-5">
-            <FieldLabel label="رقم الهوية" required />
-            <TextInput
-              value={idNo}
-              onChangeText={(text) => setIdNo(text.replace(/[^0-9]/g, '').slice(0, 9))}
-              placeholder="أدخل 9 أرقام"
-              placeholderTextColor="#64748B"
-              keyboardType="numeric"
-              maxLength={9}
-              className={`rounded-2xl border px-4 py-4 text-right text-white ${
-                errors.idNo ? 'border-red-500/60 bg-red-900/10' : 'border-white/10 bg-surface'
-              }`}
-            />
-            {errors.idNo && (
-              <Text className="mt-1 text-right text-xs text-red-400">
-                {!idNo ? 'هذا الحقل مطلوب' : idNo.length !== 9 ? 'يجب أن يتكون من 9 أرقام' : ''}
-              </Text>
-            )}
-          </View>
-          {/* 2.5 Jawwal Number */}
-          <View className="mb-5">
-            <FieldLabel label="رقم الجوال (جوال)" required />
-            <TextInput
-              value={jawwalNo}
-              onChangeText={(text) => setJawwalNo(text.replace(/[^0-9]/g, ''))}
-              placeholder="مثال: 059XXXXXXX"
-              placeholderTextColor="#64748B"
-              keyboardType="numeric"
-              className={`rounded-2xl border px-4 py-4 text-right text-white ${
-                errors.jawwalNo ? 'border-red-500/60 bg-red-900/10' : 'border-white/10 bg-surface'
-              }`}
-            />
-            {errors.jawwalNo && (
-              <Text className="mt-1 text-right text-xs text-red-400">
-                يرجى إدخال رقم جوال صحيح
-              </Text>
-            )}
-          </View>
-
-          {/* 3. Branch */}
-          <View className="mb-5">
-            <FieldLabel label="الفرع" required />
-            <PickerButton
-              value={branch?.label ?? ''}
-              placeholder="اختر الفرع..."
-              onPress={() => setOpenPicker('branch')}
-              error={errors.branch}
-            />
-          </View>
-
-          {/* 4. Masjed */}
-          <View className="mb-5">
-            <FieldLabel label="المسجد" required />
-            <PickerButton
-              value={masjed?.label ?? ''}
-              placeholder="اختر المسجد..."
-              onPress={() => setOpenPicker('masjed')}
-              error={errors.masjed}
-            />
-          </View>
-
-          {/* 5. Number of family members */}
-          <View className="mb-5">
-            <FieldLabel label="عدد أفراد الأسرة" required />
-            <TextInput
-              value={familyMembers}
-              onChangeText={(text) => setFamilyMembers(text.replace(/[^0-9]/g, ''))}
-              placeholder="مثال: 5"
-              placeholderTextColor="#64748B"
-              keyboardType="numeric"
-              className={`rounded-2xl border px-4 py-4 text-right text-white ${
-                errors.familyMembers
-                  ? 'border-red-500/60 bg-red-900/10'
-                  : 'border-white/10 bg-surface'
-              }`}
-            />
-          </View>
-          {/* 6. Marital Status - Dropdown */}
-          <View className="mb-5">
-            <FieldLabel label="الحالة الاجتماعية" required />
-            <PickerButton
-              value={maritalStatus}
-              placeholder="اختر الحالة الاجتماعية..."
-              onPress={() => setShowMaritalPicker(true)}
-              error={errors.maritalStatus}
-            />
-            {errors.maritalStatus && (
-              <Text className="mt-1 text-right text-xs text-red-400">هذا الحقل مطلوب</Text>
-            )}
-          </View>
-          <OptionsPicker
-            title="اختر الحالة الاجتماعية"
-            visible={showMaritalPicker}
-            options={['متزوج/ة', 'أعزب/عزباء', 'أرمل/ة', 'مطلق/ة', 'مهجور/ة', 'متعدد الزوجات']}
-            onSelect={(value) => {
-              setMaritalStatus(value);
-              setErrors((e) => ({ ...e, maritalStatus: false }));
-            }}
-            onClose={() => setShowMaritalPicker(false)}
-          />
-          {/* 7. Gender */}
-          <View className="mb-5">
-            <FieldLabel label="الجنس" required />
-            <RadioGroup
-              options={['ذكر', 'أنثى']}
-              value={gender}
-              wrap
-              onChange={(v) => {
-                setGender(v);
-                setErrors((e) => ({ ...e, gender: false }));
-              }}
-            />
-            {errors.gender && (
-              <Text className="mt-1 text-right text-xs text-red-400">هذا الحقل مطلوب</Text>
-            )}
-          </View>
-
-          {/* 8. Nature of Approval */}
-          <View className="mb-5">
-            <FieldLabel label="طبيعة الموافقة" required />
-            <RadioGroup
-              options={['إيواء داخلي', 'إيواء خارجي']}
-              value={natureOfApproval}
-              wrap
-              onChange={(v) => {
-                setNatureOfApproval(v);
-                setErrors((e) => ({ ...e, natureOfApproval: false }));
-              }}
-            />
-            {errors.natureOfApproval && (
-              <Text className="mt-1 text-right text-xs text-red-400">هذا الحقل مطلوب</Text>
-            )}
-          </View>
-
-          {/* 9. Accommodation Name */}
-          <View className="mb-5">
-            <FieldLabel label="اسم مركز الإيواء" required />
-            <PickerButton
-              value={accommodationName?.label ?? ''}
-              placeholder="اختر اسم مركز الإيواء..."
-              onPress={() => setOpenPicker('accommodation')}
-              error={errors.accommodationName}
-            />
-          </View>
-
-          {/* 10. Wife's full name (optional) */}
-          <View className="mb-5">
-            <FieldLabel label="اسم الزوجة" required />
-            <TextInput
-              value={wifeFullName}
-              onChangeText={setWifeFullName}
-              placeholder="أدخل اسم الزوجة"
-              placeholderTextColor="#64748B"
-              className="rounded-2xl border border-white/10 bg-surface px-4 py-4 text-right text-white"
-            />
-          </View>
-
-          {/* 11. Wife's ID number (optional, 9 digits) */}
-          <View className="mb-5">
-            <FieldLabel label="رقم هوية الزوجة" required />
-            <TextInput
-              value={wifeIdNo}
-              onChangeText={(text) => setWifeIdNo(text.replace(/[^0-9]/g, '').slice(0, 9))}
-              placeholder="أدخل 9 أرقام"
-              placeholderTextColor="#64748B"
-              keyboardType="numeric"
-              maxLength={9}
-              className={`rounded-2xl border px-4 py-4 text-right text-white ${
-                errors.wifeIdNo ? 'border-red-500/60 bg-red-900/10' : 'border-white/10 bg-surface'
-              }`}
-            />
-            {errors.wifeIdNo && (
-              <Text className="mt-1 text-right text-xs text-red-400">يجب أن يتكون من 9 أرقام</Text>
-            )}
-          </View>
-
-          {/* 12. Wife's date of birth (optional) */}
-          <View className="mb-5">
-            <FieldLabel label="تاريخ ميلاد الزوجة (اختياري)" />
-            <TouchableOpacity
-              onPress={() => setShowDatePicker(true)}
-              className="flex-row items-center justify-between rounded-2xl border border-white/10 bg-surface px-4 py-4">
-              <Ionicons name="calendar-outline" size={20} color="#FF6F20" />
-              <Text className="text-sm text-white">
-                {wifeDateOfBirth ? formatDate(wifeDateOfBirth) : 'اختر تاريخ الميلاد'}
-              </Text>
-            </TouchableOpacity>
-            {showDatePicker && (
-              <DateTimePicker
-                value={wifeDateOfBirth || new Date()}
-                mode="date"
-                display={Platform.OS === 'ios' ? 'inline' : 'default'}
-                onChange={(_: DateTimePickerEvent, selected?: Date) => {
-                  setShowDatePicker(Platform.OS === 'ios');
-                  if (selected) setWifeDateOfBirth(selected);
-                }}
-                maximumDate={new Date()}
-                themeVariant="dark"
+          <Stagger>
+            {/* 1. Full name */}
+            <View className="mb-5">
+              <FieldLabel label="الاسم الكامل" required />
+              <TextInput
+                value={fullName}
+                onChangeText={setFullName}
+                placeholder="أدخل الاسم الكامل"
+                placeholderTextColor="#64748B"
+                className={`rounded-2xl border px-4 py-4 text-right text-white ${
+                  errors.fullName ? 'border-red-500/60 bg-red-900/10' : 'border-white/10 bg-surface'
+                }`}
               />
-            )}
-          </View>
+            </View>
 
-          {/* 13. Address (3 lines) */}
-          <View className="mb-5">
-            <FieldLabel label="العنوان" required />
-            <TextInput
-              value={address}
-              onChangeText={setAddress}
-              placeholder="أدخل العنوان بالتفصيل"
-              placeholderTextColor="#64748B"
-              multiline
-              numberOfLines={3}
-              textAlignVertical="top"
-              className={`rounded-2xl border px-4 py-4 text-right text-white ${
-                errors.address ? 'border-red-500/60 bg-red-900/10' : 'border-white/10 bg-surface'
-              }`}
-              style={{ minHeight: 80 }}
+            {/* 2. ID number (9 digits) */}
+            <View className="mb-5">
+              <FieldLabel label="رقم الهوية" required />
+              <TextInput
+                value={idNo}
+                onChangeText={(text) => setIdNo(text.replace(/[^0-9]/g, '').slice(0, 9))}
+                placeholder="أدخل 9 أرقام"
+                placeholderTextColor="#64748B"
+                keyboardType="numeric"
+                maxLength={9}
+                className={`rounded-2xl border px-4 py-4 text-right text-white ${
+                  errors.idNo ? 'border-red-500/60 bg-red-900/10' : 'border-white/10 bg-surface'
+                }`}
+              />
+              {errors.idNo && (
+                <Text className="mt-1 text-right text-xs text-red-400">
+                  {!idNo ? 'هذا الحقل مطلوب' : idNo.length !== 9 ? 'يجب أن يتكون من 9 أرقام' : ''}
+                </Text>
+              )}
+            </View>
+            {/* 2.5 Jawwal Number */}
+            <View className="mb-5">
+              <FieldLabel label="رقم الجوال (جوال)" required />
+              <TextInput
+                value={jawwalNo}
+                onChangeText={(text) => setJawwalNo(text.replace(/[^0-9]/g, ''))}
+                placeholder="مثال: 059XXXXXXX"
+                placeholderTextColor="#64748B"
+                keyboardType="numeric"
+                className={`rounded-2xl border px-4 py-4 text-right text-white ${
+                  errors.jawwalNo ? 'border-red-500/60 bg-red-900/10' : 'border-white/10 bg-surface'
+                }`}
+              />
+              {errors.jawwalNo && (
+                <Text className="mt-1 text-right text-xs text-red-400">
+                  يرجى إدخال رقم جوال صحيح
+                </Text>
+              )}
+            </View>
+
+            {/* 3. Branch */}
+            <View className="mb-5">
+              <FieldLabel label="الفرع" required />
+              <PickerButton
+                value={branch?.label ?? ''}
+                placeholder="اختر الفرع..."
+                onPress={() => setOpenPicker('branch')}
+                error={errors.branch}
+              />
+            </View>
+
+            {/* 4. Masjed */}
+            <View className="mb-5">
+              <FieldLabel label="المسجد" required />
+              <PickerButton
+                value={masjed?.label ?? ''}
+                placeholder="اختر المسجد..."
+                onPress={() => setOpenPicker('masjed')}
+                error={errors.masjed}
+              />
+            </View>
+
+            {/* 5. Number of family members */}
+            <View className="mb-5">
+              <FieldLabel label="عدد أفراد الأسرة" required />
+              <TextInput
+                value={familyMembers}
+                onChangeText={(text) => setFamilyMembers(text.replace(/[^0-9]/g, ''))}
+                placeholder="مثال: 5"
+                placeholderTextColor="#64748B"
+                keyboardType="numeric"
+                className={`rounded-2xl border px-4 py-4 text-right text-white ${
+                  errors.familyMembers
+                    ? 'border-red-500/60 bg-red-900/10'
+                    : 'border-white/10 bg-surface'
+                }`}
+              />
+            </View>
+            {/* 6. Marital Status - Dropdown */}
+            <View className="mb-5">
+              <FieldLabel label="الحالة الاجتماعية" required />
+              <PickerButton
+                value={maritalStatus}
+                placeholder="اختر الحالة الاجتماعية..."
+                onPress={() => setShowMaritalPicker(true)}
+                error={errors.maritalStatus}
+              />
+              {errors.maritalStatus && (
+                <Text className="mt-1 text-right text-xs text-red-400">هذا الحقل مطلوب</Text>
+              )}
+            </View>
+            <OptionsPicker
+              title="اختر الحالة الاجتماعية"
+              visible={showMaritalPicker}
+              options={['متزوج/ة', 'أعزب/عزباء', 'أرمل/ة', 'مطلق/ة', 'مهجور/ة', 'متعدد الزوجات']}
+              onSelect={(value) => {
+                setMaritalStatus(value);
+                setErrors((e) => ({ ...e, maritalStatus: false }));
+              }}
+              onClose={() => setShowMaritalPicker(false)}
             />
-          </View>
+            {/* 7. Gender */}
+            <View className="mb-5">
+              <FieldLabel label="الجنس" required />
+              <RadioGroup
+                options={['ذكر', 'أنثى']}
+                value={gender}
+                wrap
+                onChange={(v) => {
+                  setGender(v);
+                  setErrors((e) => ({ ...e, gender: false }));
+                }}
+              />
+              {errors.gender && (
+                <Text className="mt-1 text-right text-xs text-red-400">هذا الحقل مطلوب</Text>
+              )}
+            </View>
+
+            {/* 8. Nature of Approval */}
+            <View className="mb-5">
+              <FieldLabel label="طبيعة الموافقة" required />
+              <RadioGroup
+                options={['إيواء داخلي', 'إيواء خارجي']}
+                value={natureOfApproval}
+                wrap
+                onChange={(v) => {
+                  setNatureOfApproval(v);
+                  setErrors((e) => ({ ...e, natureOfApproval: false }));
+                }}
+              />
+              {errors.natureOfApproval && (
+                <Text className="mt-1 text-right text-xs text-red-400">هذا الحقل مطلوب</Text>
+              )}
+            </View>
+
+            {/* 9. Accommodation Name */}
+            <View className="mb-5">
+              <FieldLabel label="اسم مركز الإيواء" required />
+              <PickerButton
+                value={accommodationName?.label ?? ''}
+                placeholder="اختر اسم مركز الإيواء..."
+                onPress={() => setOpenPicker('accommodation')}
+                error={errors.accommodationName}
+              />
+            </View>
+
+            {/* 10. Wife's full name (optional) */}
+            <View className="mb-5">
+              <FieldLabel label="اسم الزوجة" required />
+              <TextInput
+                value={wifeFullName}
+                onChangeText={setWifeFullName}
+                placeholder="أدخل اسم الزوجة"
+                placeholderTextColor="#64748B"
+                className="rounded-2xl border border-white/10 bg-surface px-4 py-4 text-right text-white"
+              />
+            </View>
+
+            {/* 11. Wife's ID number (optional, 9 digits) */}
+            <View className="mb-5">
+              <FieldLabel label="رقم هوية الزوجة" required />
+              <TextInput
+                value={wifeIdNo}
+                onChangeText={(text) => setWifeIdNo(text.replace(/[^0-9]/g, '').slice(0, 9))}
+                placeholder="أدخل 9 أرقام"
+                placeholderTextColor="#64748B"
+                keyboardType="numeric"
+                maxLength={9}
+                className={`rounded-2xl border px-4 py-4 text-right text-white ${
+                  errors.wifeIdNo ? 'border-red-500/60 bg-red-900/10' : 'border-white/10 bg-surface'
+                }`}
+              />
+              {errors.wifeIdNo && (
+                <Text className="mt-1 text-right text-xs text-red-400">
+                  يجب أن يتكون من 9 أرقام
+                </Text>
+              )}
+            </View>
+
+            {/* 12. Wife's date of birth (optional) */}
+            <View className="mb-5">
+              <FieldLabel label="تاريخ ميلاد الزوجة (اختياري)" />
+              <TouchableOpacity
+                onPress={() => setShowDatePicker(true)}
+                className="flex-row items-center justify-between rounded-2xl border border-white/10 bg-surface px-4 py-4">
+                <Ionicons name="calendar-outline" size={20} color="#FF6F20" />
+                <Text className="text-sm text-white">
+                  {wifeDateOfBirth ? formatDate(wifeDateOfBirth) : 'اختر تاريخ الميلاد'}
+                </Text>
+              </TouchableOpacity>
+              {showDatePicker && (
+                <DateTimePicker
+                  value={wifeDateOfBirth || new Date()}
+                  mode="date"
+                  display={Platform.OS === 'ios' ? 'inline' : 'default'}
+                  onChange={(_: DateTimePickerEvent, selected?: Date) => {
+                    setShowDatePicker(Platform.OS === 'ios');
+                    if (selected) setWifeDateOfBirth(selected);
+                  }}
+                  maximumDate={new Date()}
+                  themeVariant="dark"
+                />
+              )}
+            </View>
+
+            {/* 13. Address (3 lines) */}
+            <View className="mb-5">
+              <FieldLabel label="العنوان" required />
+              <TextInput
+                value={address}
+                onChangeText={setAddress}
+                placeholder="أدخل العنوان بالتفصيل"
+                placeholderTextColor="#64748B"
+                multiline
+                numberOfLines={3}
+                textAlignVertical="top"
+                className={`rounded-2xl border px-4 py-4 text-right text-white ${
+                  errors.address ? 'border-red-500/60 bg-red-900/10' : 'border-white/10 bg-surface'
+                }`}
+                style={{ minHeight: 80 }}
+              />
+            </View>
+          </Stagger>
         </ScrollView>
       </KeyboardAvoidingView>
 
