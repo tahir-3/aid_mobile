@@ -3,6 +3,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { useAuthStore } from '../store/authStore';
+import { useSyncStore } from '../store/syncStore';
 import { ActivityIndicator } from 'react-native';
 
 export const unstable_settings = {
@@ -24,6 +25,17 @@ export default function RootLayout() {
     init();
   }, [initialize]);
 
+  // Signed in: finish a first download that was interrupted (app killed / offline).
+  // Signed out: forget the previous user's sync progress.
+  useEffect(() => {
+    if (!isReady) return;
+    if (isAuthenticated) {
+      useSyncStore.getState().resumeIfIncomplete();
+      // Roles/permissions may have changed since the profile was cached.
+      useAuthStore.getState().refreshProfile();
+    } else useSyncStore.getState().reset();
+  }, [isAuthenticated, isReady]);
+
   useEffect(() => {
     if (!isReady) return;
 
@@ -39,7 +51,7 @@ export default function RootLayout() {
   }, [isAuthenticated, segments, router, isReady]);
 
   if (!isReady) {
-    return <ActivityIndicator color={"#143A6B"} size={40} />; // Or a splash screen / loading spinner
+    return <ActivityIndicator color={'#143A6B'} size={40} />; // Or a splash screen / loading spinner
   }
 
   return (
@@ -52,6 +64,8 @@ export default function RootLayout() {
         <Stack.Screen name="aid-details" options={{ headerShown: false }} />
         <Stack.Screen name="new-aid" options={{ headerShown: false }} />
         <Stack.Screen name="new-recipient" options={{ headerShown: false }} />
+        <Stack.Screen name="record-details" options={{ headerShown: false }} />
+        <Stack.Screen name="new-record" options={{ headerShown: false }} />
       </Stack>
     </SafeAreaProvider>
   );

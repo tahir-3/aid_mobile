@@ -4,7 +4,27 @@ import { useFocusEffect } from '@react-navigation/native';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, FlatList, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { PersonAidsSheet, type PersonRef } from '../../components/PersonAidsSheet';
+import { RecordIcon } from '../../components/RecordIcon';
+import { SyncBanner } from '../../components/SyncBanner';
+import { EnterView } from '../../components/motion/Enter';
+import { FilterSheet } from '../../components/FilterSheet';
+import { ExportButton } from '../../components/ExportButton';
+import { exportFilteredPeople } from '../../lib/exportFile';
+import { describeApiError } from '../../lib/apiError';
+import {
+  activeFilterCount,
+  EMPTY_FILTER,
+  fetchFilteredPeople,
+  type PeopleFilter,
+} from '../../lib/peopleFilter';
+import { useDebouncedValue } from '../../lib/useDebouncedValue';
+
+import { useSyncStore } from '../../store/syncStore';
 import { getRecipientsPaginated, getRecipientsCount } from '../../lib/sync';
+
+/** Fields requested from the filter endpoint (same shape as the local rows). */
+const RECIPIENT_FILTER_FIELDS = ['name', 'full_name', 'id_no', 'branch', 'jawwal_no', 'docstatus'];
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Recipient {
@@ -21,11 +41,8 @@ interface Recipient {
 const PAGE_SIZE = 20;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-const getInitials = (name?: string): string => {
-  if (!name) return '؟';
-  const parts = name.trim().split(' ');
-  return parts[0]?.[0] ?? '؟';
-};
+/** Same blue as the recipients stat card on the dashboard. */
+const RECIPIENT_COLOR = '#3B82F6';
 
 const getStatusStyle = (status?: string) => {
   switch (status) {
@@ -41,10 +58,16 @@ const getStatusStyle = (status?: string) => {
 
 // ─── Recipient Card ───────────────────────────────────────────────────────────
 const RecipientCard = React.memo(
-  ({ item, onPress }: { item: Recipient; onPress: (item: Recipient) => void }) => {
-    console.log({ item });
+  ({
+    item,
+    onPress,
+    onAids,
+  }: {
+    item: Recipient;
+    onPress: (item: Recipient) => void;
+    onAids: (item: Recipient) => void;
+  }) => {
     const displayName = item.full_name ?? item.recipient_name ?? item.name;
-    const initials = getInitials(displayName);
     const statusStyle = getStatusStyle(item.status);
     const isPendingSync = item.created_locally === true || item.synced === false;
     return (
@@ -69,8 +92,13 @@ const RecipientCard = React.memo(
         {/* Top Row */}
 
         <View className="mb-4 flex-row items-start justify-between">
-          <TouchableOpacity>
-            <Ionicons name="ellipsis-vertical" size={20} color="#94A3B8" />
+          <TouchableOpacity
+            onPress={() => onAids(item)}
+            accessibilityLabel="عرض المساعدات"
+            hitSlop={8}
+            className="items-center rounded-2xl bg-primary/10 px-2.5 py-2">
+            <Ionicons name="hand-left-outline" size={18} color="#FF6F20" />
+            <Text className="mt-0.5 text-[10px] font-bold text-primary">المساعدات</Text>
           </TouchableOpacity>
 
           <View className="flex-1 flex-row items-center justify-end">
@@ -84,8 +112,10 @@ const RecipientCard = React.memo(
                 </View>
               )}
             </View>
-            <View className="h-12 w-12 items-center justify-center rounded-2xl border border-blue-500/10 bg-blue-900/20">
-              <Text className="text-xl font-bold text-primary">{initials}</Text>
+            <View
+              className="h-12 w-12 items-center justify-center rounded-2xl"
+              style={{ backgroundColor: `${RECIPIENT_COLOR}1A` }}>
+              <RecordIcon type="recipients" size={22} color={RECIPIENT_COLOR} />
             </View>
           </View>
         </View>
@@ -134,24 +164,61 @@ export default function RecipientsScreen() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
 
+  // Criteria filter: while active, the list comes from the server
+  // (aids.api.filter_people) instead of the local copy.
+  const [filter, setFilter] = useState<PeopleFilter>(EMPTY_FILTER);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [filterError, setFilterError] = useState<string | null>(null);
+  const filterCount = activeFilterCount(filter);
+  const debouncedSearch = useDebouncedValue(search.trim(), 400);
+  const serverSearch = filterCount ? debouncedSearch : '';
+
+  const fetchFilteredPage = useCallback(
+    (start: number) =>
+      fetchFilteredPeople('Recipient', filter, {
+        fields: RECIPIENT_FILTER_FIELDS,
+        search: serverSearch,
+        start,
+        limit: PAGE_SIZE,
+      }),
+    [filter, serverSearch]
+  );
+
   const loadRecipients = useCallback(
     async (reset = true) => {
       setLoading(true);
-      const [data, count] = await Promise.all([
-        getRecipientsPaginated(PAGE_SIZE, 0, search.trim() || undefined),
-        getRecipientsCount(search.trim() || undefined),
-      ]);
-      setRecipients(data as Recipient[]);
-      setTotalCount(count);
+      setFilterError(null);
+      if (filterCount) {
+        try {
+          const { rows, total } = await fetchFilteredPage(0);
+          setRecipients(rows as Recipient[]);
+          setTotalCount(total);
+        } catch (e) {
+          const info = describeApiError(e);
+          setRecipients([]);
+          setTotalCount(0);
+          setFilterError(info.detail ?? info.message);
+        }
+      } else {
+        const [data, count] = await Promise.all([
+          getRecipientsPaginated(PAGE_SIZE, 0, search.trim() || undefined),
+          getRecipientsCount(search.trim() || undefined),
+        ]);
+        setRecipients(data as Recipient[]);
+        setTotalCount(count);
+      }
       setPage(1);
       setLoading(false);
     },
-    [search]
+    [search, filterCount, fetchFilteredPage]
   );
 
+  // Local search reacts per keystroke; filtered (server) search is debounced.
+  const queryKey = filterCount ? `${serverSearch}|${JSON.stringify(filter)}` : `local|${search}`;
   useEffect(() => {
     loadRecipients();
-  }, [search]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queryKey]);
 
   useFocusEffect(
     useCallback(() => {
@@ -159,14 +226,29 @@ export default function RecipientsScreen() {
     }, [loadRecipients])
   );
 
+  // Background download (after login) finished → show the new local data.
+  const syncStatus = useSyncStore((s) => s.status);
+  const dataVersion = useSyncStore((s) => s.dataVersion);
+  useEffect(() => {
+    if (dataVersion) loadRecipients();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dataVersion]);
+
   const loadMore = useCallback(async () => {
     if (loadingMore || recipients.length >= totalCount || recipients.length === 0) return;
     setLoadingMore(true);
     const offset = recipients.length;
-    const data = await getRecipientsPaginated(PAGE_SIZE, offset, search.trim() || undefined);
-    setRecipients((prev) => [...prev, ...(data as Recipient[])]);
-    setLoadingMore(false);
-  }, [recipients.length, totalCount, loadingMore, search]);
+    try {
+      const data = filterCount
+        ? (await fetchFilteredPage(offset)).rows
+        : await getRecipientsPaginated(PAGE_SIZE, offset, search.trim() || undefined);
+      setRecipients((prev) => [...prev, ...(data as Recipient[])]);
+    } catch (e) {
+      console.warn('Failed to load more recipients:', describeApiError(e));
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [recipients.length, totalCount, loadingMore, search, filterCount, fetchFilteredPage]);
 
   const onSearchChange = (text: string) => {
     setSearch(text);
@@ -180,11 +262,25 @@ export default function RecipientsScreen() {
     [router]
   );
 
+  // Bottom sheet with all aids of a recipient.
+  const [aidsPerson, setAidsPerson] = useState<PersonRef | null>(null);
+  const openAids = useCallback(
+    (item: Recipient) =>
+      setAidsPerson({
+        type: 'Recipient',
+        name: item.name ?? item.id,
+        title: item.full_name ?? item.recipient_name ?? item.name,
+      }),
+    []
+  );
+
   const renderItem = useCallback(
-    ({ item }: { item: Recipient }) => {
-      return <RecipientCard item={item} onPress={handleItemPress} />;
-    },
-    [handleItemPress]
+    ({ item, index }: { item: Recipient; index: number }) => (
+      <EnterView index={index}>
+        <RecipientCard item={item} onPress={handleItemPress} onAids={openAids} />
+      </EnterView>
+    ),
+    [handleItemPress, openAids]
   );
 
   const renderFooter = useCallback(
@@ -199,13 +295,22 @@ export default function RecipientsScreen() {
 
   const renderEmpty = useCallback(
     () =>
-      !loading ? (
+      loading ? null : syncStatus === 'running' ? (
         <View className="mt-20 items-center">
-          <Ionicons name="people-outline" size={48} color="#475569" />
-          <Text className="mt-4 text-slate-500">لا توجد نتائج</Text>
+          <ActivityIndicator color="#FF6F20" size="large" />
+          <Text className="mt-4 text-slate-500">جاري تحميل البيانات من الخادم...</Text>
         </View>
-      ) : null,
-    [loading]
+      ) : (
+        <View className="mt-20 items-center px-6">
+          <Ionicons
+            name={filterError ? 'alert-circle-outline' : 'people-outline'}
+            size={48}
+            color="#475569"
+          />
+          <Text className="mt-4 text-center text-slate-500">{filterError ?? 'لا توجد نتائج'}</Text>
+        </View>
+      ),
+    [loading, syncStatus, filterError]
   );
 
   return (
@@ -215,16 +320,37 @@ export default function RecipientsScreen() {
         {/* <TouchableOpacity>
           <Ionicons name="notifications-outline" size={24} color="white" />
         </TouchableOpacity> */}
-        <Text className="mr-2 text-4xl font-bold text-white">المستلمون</Text>
+        <Text className="text-4xl font-bold text-white">المستلمون</Text>
+        <RecordIcon
+          type="recipients"
+          size={30}
+          color={RECIPIENT_COLOR}
+          style={{ marginLeft: 10 }}
+        />
 
         {/* <TouchableOpacity className="h-10 w-10 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-slate-800">
           <Ionicons name="person" size={24} color="#FF6F20" />
         </TouchableOpacity> */}
       </View>
 
-      {/* Search Bar */}
-      <View className="mb-4 px-4">
-        <View className="flex-row items-center rounded-2xl border border-white/5 bg-surface px-4 py-1">
+      <SyncBanner />
+
+      {/* Search Bar + filter */}
+      <View className="mb-4 flex-row items-center gap-2 px-4">
+        <TouchableOpacity
+          onPress={() => setFilterOpen(true)}
+          accessibilityLabel="تصفية"
+          className={`h-12 w-12 items-center justify-center rounded-2xl border ${
+            filterCount ? 'border-primary bg-primary/15' : 'border-white/5 bg-surface'
+          }`}>
+          <Ionicons name="options-outline" size={22} color={filterCount ? '#FF6F20' : '#94A3B8'} />
+          {filterCount ? (
+            <View className="absolute -right-1 -top-1 h-5 min-w-[20px] items-center justify-center rounded-full bg-primary px-1">
+              <Text className="text-[10px] font-bold text-white">{filterCount}</Text>
+            </View>
+          ) : null}
+        </TouchableOpacity>
+        <View className="flex-1 flex-row items-center rounded-2xl border border-white/5 bg-surface px-4 py-1">
           <Ionicons name="search-outline" size={20} color="#94A3B8" />
           <TextInput
             placeholder="بحث عن مستلم (الاسم، الهوية، الجوال)..."
@@ -243,7 +369,24 @@ export default function RecipientsScreen() {
 
       {/* Count */}
       {!loading && (
-        <Text className="mb-2 px-5 text-right text-xs text-slate-500">{totalCount} مستلم</Text>
+        <View className="mb-2 flex-row-reverse items-center justify-between px-5">
+          <Text className="text-right text-xs text-slate-500">
+            {totalCount} مستلم{filterCount ? ' مطابق' : ''}
+          </Text>
+          {filterCount ? (
+            <View className="flex-row-reverse items-center gap-2">
+              <ExportButton
+                onExport={() => exportFilteredPeople('Recipient', filter, serverSearch)}
+              />
+              <TouchableOpacity
+                onPress={() => setFilter(EMPTY_FILTER)}
+                className="flex-row-reverse items-center rounded-full bg-slate-800/60 px-3 py-1">
+                <Ionicons name="close" size={12} color="#94A3B8" />
+                <Text className="mr-1 text-xs text-slate-300">مسح التصفية</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
+        </View>
       )}
 
       {/* List */}
@@ -277,6 +420,16 @@ export default function RecipientsScreen() {
         className="absolute bottom-10 left-8 h-14 w-14 items-center justify-center rounded-full bg-primary shadow-lg shadow-primary/60">
         <Ionicons name="person-add" size={24} color="white" />
       </TouchableOpacity>
+
+      <FilterSheet
+        visible={filterOpen}
+        type="Recipient"
+        title="المستلمين"
+        value={filter}
+        onApply={setFilter}
+        onClose={() => setFilterOpen(false)}
+      />
+      <PersonAidsSheet person={aidsPerson} onClose={() => setAidsPerson(null)} />
     </SafeAreaView>
   );
 }

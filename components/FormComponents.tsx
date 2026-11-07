@@ -194,8 +194,10 @@ export const RadioGroup = ({
         className={`flex-1 flex-row-reverse items-center justify-center rounded-2xl border px-4 py-3 ${
           value === opt ? 'border-primary bg-primary/10' : 'border-white/10 bg-surface'
         }`}>
+        {/* Row is reversed (RTL): the circle sits right of the label, so the gap
+            goes on its left side. */}
         <View
-          className={`mr-2 h-4 w-4 rounded-full border-2 ${
+          className={`ml-3 h-4 w-4 rounded-full border-2 ${
             value === opt ? 'border-primary bg-primary' : 'border-slate-500'
           }`}
         />

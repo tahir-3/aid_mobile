@@ -1,4 +1,5 @@
-import { getDoctypeList, getDoctypeListPaginated, insertDoc } from './api';
+import { bulkInsertAids, getDoctypeCount, getDoctypeList, insertDoc } from './api';
+import { frappeMessage } from './apiError';
 import { storage } from './storage';
 import {
   bulkUpsertRecipients,
@@ -13,9 +14,17 @@ import {
   getRecipientsCount,
   getAidsPaginated,
   getAidsCount,
+  getDashboardStats,
 } from './db';
 
-export { getRecipientsPaginated, getRecipientsCount, getAidsPaginated, getAidsCount };
+export {
+  getRecipientsPaginated,
+  getRecipientsCount,
+  getAidsPaginated,
+  getAidsCount,
+  getDashboardStats,
+};
+export type { DashboardStats, LabelCount } from './db';
 
 // Storage keys for each doctype
 export const STORAGE_KEYS = {
@@ -34,6 +43,7 @@ export const STORAGE_KEYS = {
 const AID_FIELDS = [
   'name',
   'creation',
+  'recipient_type',
   'recipient',
   'branch',
   'aid_type',
@@ -94,61 +104,59 @@ function toFrappeCreationFilter(isoDate: string): string {
   return d.toISOString().slice(0, 19).replace('T', ' ');
 }
 
-/**
- * Pull only records created AFTER lastSyncDate. Uses creation field from Frappe.
- * Frappe expects YYYY-MM-DD HH:MM:SS and we use > (not >=) to avoid re-fetching same records.
- * For first sync (no lastSyncDate), does full pull.
- */
-async function pullIncrementalRecipients(
-  lastSyncDate: string | null,
-  onProgress?: (progress: number, message: string) => void
-): Promise<number> {
-  const filters = lastSyncDate
-    ? { creation: ['>', toFrappeCreationFilter(lastSyncDate)] }
-    : {};
-  onProgress?.(0, 'جاري جلب المستفيدين الجدد...');
-  const records = await getDoctypeListPaginated(
-    'Recipient',
-    ["*"],
-    filters,
-    2000,
-    (page, count) => {
-      if (count > 0) onProgress?.(50, `جاري تحميل المستفيدين... (صفحة ${page + 1})`);
-    }
-  );
+type ProgressFn = (progress: number, message: string) => void;
 
-  if (records.length > 0) {
-    await bulkUpsertRecipients(records);
+/** First chunk is small so lists fill instantly; the rest downloads in bigger chunks. */
+const FIRST_CHUNK = 20;
+const CHUNK = 500;
+
+/**
+ * Pull records created after `lastSyncDate` (all records on first sync) in chunks,
+ * newest first. Every chunk is written to SQLite immediately and `onChunk` fires,
+ * so screens can show data while the rest is still downloading.
+ */
+async function pullChunked(
+  doctype: string,
+  fields: string[],
+  lastSyncDate: string | null,
+  upsert: (records: Record<string, any>[]) => Promise<void>,
+  onLoaded: (loaded: number) => void,
+  onChunk?: () => void
+): Promise<number> {
+  const filters = lastSyncDate ? { creation: ['>', toFrappeCreationFilter(lastSyncDate)] } : {};
+  let start = 0;
+  let size = FIRST_CHUNK;
+  let loaded = 0;
+
+  while (true) {
+    const batch = await getDoctypeList(doctype, fields, filters, {
+      limit: size,
+      limit_start: start,
+    });
+    const records = Array.isArray(batch) ? batch : [];
+    if (records.length > 0) {
+      await upsert(records);
+      loaded += records.length;
+      onLoaded(loaded);
+      onChunk?.();
+    }
+    // Short page = last page. A page LARGER than asked means an old backend that
+    // ignores paging and returned everything at once — also done.
+    if (records.length !== size) break;
+    start += size;
+    size = CHUNK;
   }
-  return records.length;
+  return loaded;
 }
 
-/**
- * Pull only AIDs created AFTER lastSyncDate.
- * Uses same Frappe format: creation > YYYY-MM-DD HH:MM:SS
- */
-async function pullIncrementalAids(
-  lastSyncDate: string | null,
-  onProgress?: (progress: number, message: string) => void
-): Promise<number> {
-  const filters = lastSyncDate
-    ? { creation: ['>', toFrappeCreationFilter(lastSyncDate)] }
-    : {};
-  onProgress?.(50, 'جاري جلب المساعدات الجديدة...');
-  const records = await getDoctypeListPaginated(
-    'AID',
-    AID_FIELDS,
-    filters,
-    2000,
-    (page, count) => {
-      if (count > 0) onProgress?.(75, `جاري تحميل المساعدات... (صفحة ${page + 1})`);
-    }
-  );
-
-  if (records.length > 0) {
-    await bulkUpsertAids(records);
+/** Number of records to download, or null when the server can't tell. */
+async function countToPull(doctype: string, lastSyncDate: string | null): Promise<number | null> {
+  try {
+    const filters = lastSyncDate ? { creation: ['>', toFrappeCreationFilter(lastSyncDate)] } : {};
+    return await getDoctypeCount(doctype, filters);
+  } catch {
+    return null;
   }
-  return records.length;
 }
 
 /**
@@ -196,17 +204,57 @@ async function migrateFromAsyncStorageIfNeeded() {
  *
  * @param onProgress - Optional callback (0–100, message)
  */
-export const performIncrementalPull = async (
-  onProgress?: (progress: number, message: string) => void
-) => {
+export const performIncrementalPull = async (onProgress?: ProgressFn, onChunk?: () => void) => {
   await migrateFromAsyncStorageIfNeeded();
   const lastSync = await storage.getItem(STORAGE_KEYS.LAST_SYNC);
+  const startedAt = new Date().toISOString();
+
+  onProgress?.(0, 'جاري تحميل البيانات...');
+  const [recipientTotal, aidTotal] = await Promise.all([
+    countToPull('Recipient', lastSync),
+    countToPull('AID', lastSync),
+  ]);
+  const loaded = { recipients: 0, aids: 0 };
+  const report = () => {
+    const total = (recipientTotal ?? 0) + (aidTotal ?? 0);
+    const done = loaded.recipients + loaded.aids;
+    const pct = total > 0 ? Math.min(90, Math.round((done / total) * 90)) : 45;
+    const of = (n: number, t: number | null) => (t != null ? `${n}/${t}` : `${n}`);
+    onProgress?.(
+      pct,
+      `جاري التحميل: ${of(loaded.recipients, recipientTotal)} مستفيد، ${of(loaded.aids, aidTotal)} مساعدة`
+    );
+  };
+
+  // Both run concurrently so the first 20 of each type appear almost at once.
   const [recipientCount, aidCount] = await Promise.all([
-    pullIncrementalRecipients(lastSync, onProgress),
-    pullIncrementalAids(lastSync, onProgress),
+    pullChunked(
+      'Recipient',
+      ['*'],
+      lastSync,
+      bulkUpsertRecipients,
+      (n) => {
+        loaded.recipients = n;
+        report();
+      },
+      onChunk
+    ),
+    pullChunked(
+      'AID',
+      AID_FIELDS,
+      lastSync,
+      bulkUpsertAids,
+      (n) => {
+        loaded.aids = n;
+        report();
+      },
+      onChunk
+    ),
   ]);
   await syncSmallDoctypes(onProgress);
-  await storage.saveItem(STORAGE_KEYS.LAST_SYNC, new Date().toISOString());
+  // Only now is the pull complete; an interrupted pull is resumed from scratch
+  // (upserts are idempotent). Use the start time so records created meanwhile are kept.
+  await storage.saveItem(STORAGE_KEYS.LAST_SYNC, startedAt);
   onProgress?.(100, 'تم التحميل بنجاح!');
 
   return { recipientCount, aidCount };
@@ -216,10 +264,8 @@ export const performIncrementalPull = async (
  * Full initial sync: pulls all Recipient and AID records (paginated), plus small doctypes.
  * Use only for first-time sync or reset. Prefer performIncrementalPull for normal sync.
  */
-export const performInitialSync = async (
-  onProgress?: (progress: number, message: string) => void
-) => {
-  return performIncrementalPull(onProgress);
+export const performInitialSync = async (onProgress?: ProgressFn, onChunk?: () => void) => {
+  return performIncrementalPull(onProgress, onChunk);
 };
 
 /**
@@ -276,6 +322,8 @@ const toFrappeAid = (
   const recipientValue = local.recipient;
   const serverRecipient = recipientIdMap.get(recipientValue) ?? recipientValue;
   return {
+    // AID.recipient is a Dynamic Link on recipient_type; older local rows have none.
+    recipient_type: local.recipient_type ?? 'Recipient',
     recipient: serverRecipient,
     branch: local.branch,
     aid_type: local.aid_type,
@@ -285,6 +333,18 @@ const toFrappeAid = (
     nature_of_aid: local.nature_of_aid,
   };
 };
+
+const AID_PUSH_BATCH = 50;
+
+/** True when the server doesn't know the called method (older backend). */
+const isMissingMethod = (err: any) => {
+  const status = err?.response?.status;
+  const text = JSON.stringify(err?.response?.data ?? '');
+  return status === 404 || /Failed to get method|not whitelisted/i.test(text);
+};
+
+const frappeErrorText = (err: any): string =>
+  frappeMessage(err?.response?.data) ?? err?.message ?? String(err);
 
 /**
  * Pushes all local unsynced Recipients and AIDs to Frappe.
@@ -335,35 +395,51 @@ export const pushUnsyncedToServer = async (): Promise<SyncResult> => {
     }
   }
 
-  for (const local of unsyncedAids) {
-    try {
-      const doc = toFrappeAid(local, recipientIdMap);
-      const created = await insertDoc('AID', doc);
-      const serverName = created?.name;
-      if (!serverName) {
-        errors.push(`AID ${local.name}: لم يُرجع الخادم معرفاً`);
-        continue;
-      }
-      await updateAid(local.name, {
-        name: serverName,
-        synced: true,
-        created_locally: false,
-      });
-      syncedAids++;
-    } catch (err: any) {
-      let msg = err?.message || String(err);
-      if (err.response?.data) {
-        const data = err.response.data;
-        if (data._server_messages) {
-          try {
-            const msgs = JSON.parse(data._server_messages);
-            msg = msgs.map((m: any) => m.message || m).join(', ');
-          } catch {}
-        } else if (data.message) {
-          msg = data.message;
+  // AIDs: bulk endpoint in batches; falls back to one request per AID on backends
+  // without `aids.api.bulk_insert_aids`.
+  const markAidSynced = (localName: string, serverName: string) =>
+    updateAid(localName, { name: serverName, synced: true, created_locally: false });
+
+  let bulkSupported = true;
+  for (let i = 0; i < unsyncedAids.length; i += AID_PUSH_BATCH) {
+    const batch = unsyncedAids.slice(i, i + AID_PUSH_BATCH);
+    if (bulkSupported) {
+      try {
+        const rows = batch.map((local) => ({
+          client_id: local.name,
+          ...toFrappeAid(local, recipientIdMap),
+        }));
+        const results = await bulkInsertAids(rows);
+        for (const r of results) {
+          if (r.name) {
+            await markAidSynced(r.client_id, r.name);
+            syncedAids++;
+          } else {
+            errors.push(`AID ${r.client_id}: ${r.error ?? 'خطأ غير معروف'}`);
+          }
         }
+        continue;
+      } catch (err: any) {
+        if (!isMissingMethod(err)) {
+          errors.push(`AID (${batch.length}): ${frappeErrorText(err)}`);
+          continue;
+        }
+        bulkSupported = false; // old backend → per-document below
       }
-      errors.push(`AID ${local.name}: ${msg}`);
+    }
+
+    for (const local of batch) {
+      try {
+        const created = await insertDoc('AID', toFrappeAid(local, recipientIdMap));
+        if (!created?.name) {
+          errors.push(`AID ${local.name}: لم يُرجع الخادم معرفاً`);
+          continue;
+        }
+        await markAidSynced(local.name, created.name);
+        syncedAids++;
+      } catch (err: any) {
+        errors.push(`AID ${local.name}: ${frappeErrorText(err)}`);
+      }
     }
   }
 

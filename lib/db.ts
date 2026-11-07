@@ -102,6 +102,22 @@ export async function upsertAid(record: Record<string, any>) {
   );
 }
 
+/**
+ * Save several new AIDs created on this device in ONE transaction (all or nothing).
+ * They are marked unsynced and uploaded by the next push.
+ */
+export async function insertLocalAids(records: Record<string, any>[]) {
+  if (records.length === 0) return;
+  const database = await getDb();
+  const sql = `INSERT OR REPLACE INTO aids (name, data, created_at, synced, created_locally) VALUES (?, ?, ?, 0, 1)`;
+  const now = new Date().toISOString();
+  await database.withTransactionAsync(async () => {
+    for (const r of records) {
+      await database.runAsync(sql, r.name, JSON.stringify(r), now);
+    }
+  });
+}
+
 /** Bulk upsert recipients. Uses runAsync to avoid prepareAsync NullPointerException on Android. */
 export async function bulkUpsertRecipients(records: Record<string, any>[]) {
   if (records.length === 0) return;
@@ -317,4 +333,85 @@ export async function replaceAllAids(records: Record<string, any>[]) {
   const database = await getDb();
   await database.runAsync('DELETE FROM aids');
   await bulkUpsertAids(records);
+}
+
+export interface LabelCount {
+  label: string;
+  count: number;
+}
+
+export interface DashboardStats {
+  totalAids: number;
+  totalRecipients: number;
+  pendingSync: number;
+  aidsThisMonth: number;
+  /** Aid counts for the last `months` calendar months, oldest first (label = YYYY-MM). */
+  monthly: LabelCount[];
+  byNature: LabelCount[];
+  byStatus: LabelCount[];
+  recentAids: Record<string, any>[];
+}
+
+/** Aggregates for the dashboard screen, computed in SQLite. */
+export async function getDashboardStats(months = 6): Promise<DashboardStats> {
+  const database = await getDb();
+  // Prefer the business date (aid_date); fall back to the row's insert time.
+  const aidMonth = "substr(COALESCE(json_extract(data, '$.aid_date'), created_at), 1, 7)";
+
+  const now = new Date();
+  const monthKeys: string[] = [];
+  for (let i = months - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    monthKeys.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+  }
+
+  const [
+    aidsRow,
+    recipientsRow,
+    pendingAids,
+    pendingRecipients,
+    monthlyRows,
+    natureRows,
+    statusRows,
+    recentRows,
+  ] = await Promise.all([
+    database.getFirstAsync<{ cnt: number }>('SELECT COUNT(*) as cnt FROM aids'),
+    database.getFirstAsync<{ cnt: number }>('SELECT COUNT(*) as cnt FROM recipients'),
+    database.getFirstAsync<{ cnt: number }>(
+      'SELECT COUNT(*) as cnt FROM aids WHERE synced = 0 OR created_locally = 1'
+    ),
+    database.getFirstAsync<{ cnt: number }>(
+      'SELECT COUNT(*) as cnt FROM recipients WHERE synced = 0 OR created_locally = 1'
+    ),
+    database.getAllAsync<{ label: string; count: number }>(
+      `SELECT ${aidMonth} as label, COUNT(*) as count FROM aids
+         WHERE ${aidMonth} >= ? GROUP BY label`,
+      monthKeys[0]
+    ),
+    database.getAllAsync<{ label: string | null; count: number }>(
+      `SELECT json_extract(data, '$.nature_of_aid') as label, COUNT(*) as count
+         FROM aids GROUP BY label ORDER BY count DESC`
+    ),
+    database.getAllAsync<{ label: string | null; count: number }>(
+      `SELECT json_extract(data, '$.eligibility_status') as label, COUNT(*) as count
+         FROM aids GROUP BY label ORDER BY count DESC`
+    ),
+    database.getAllAsync<AidRow>('SELECT data FROM aids ORDER BY created_at DESC LIMIT 10'),
+  ]);
+
+  const monthlyMap = new Map(monthlyRows.map((r) => [r.label, r.count]));
+  const monthly = monthKeys.map((label) => ({ label, count: monthlyMap.get(label) ?? 0 }));
+  const unknown = (rows: { label: string | null; count: number }[]) =>
+    rows.map((r) => ({ label: r.label || 'غير محدد', count: r.count }));
+
+  return {
+    totalAids: aidsRow?.cnt ?? 0,
+    totalRecipients: recipientsRow?.cnt ?? 0,
+    pendingSync: (pendingAids?.cnt ?? 0) + (pendingRecipients?.cnt ?? 0),
+    aidsThisMonth: monthly[monthly.length - 1]?.count ?? 0,
+    monthly,
+    byNature: unknown(natureRows),
+    byStatus: unknown(statusRows),
+    recentAids: recentRows.map((row) => JSON.parse(row.data)),
+  };
 }
