@@ -44,8 +44,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#143A6B"
       },
-      "package": "com.mashro3amer.aid",
-      "versionCode": 1
+      "package": "com.mashro3amer.aid"
     },
     "extra": {
       "router": {},
