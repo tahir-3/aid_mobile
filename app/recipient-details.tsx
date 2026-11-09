@@ -46,7 +46,7 @@ const PERSONAL_FIELDS = [
   { key: 'accommodation_name', label: 'اسم السكن', icon: 'home-outline' as const },
   { key: 'type_of_damage', label: 'نوع الضرر', icon: 'alert-circle-outline' as const },
   { key: 'other_needs', label: 'احتياجات أخرى', icon: 'ellipsis-horizontal-outline' as const },
-  { key: 'family_members', label: 'الأطفال', icon: 'ellipsis-horizontal-outline' as const },
+  { key: 'family_members', label: 'عدد الأطفال', icon: 'people-outline' as const },
 ];
 
 const WIFE_FIELDS = [
@@ -64,7 +64,30 @@ const CHILD_FIELDS = [
   { key: 'child_id_no', label: 'الهوية', icon: 'person-outline' as const },
   { key: 'child_relationship', label: 'الصلة', icon: 'person-outline' as const },
   { key: 'child_full_name', label: 'الاسم', icon: 'person-outline' as const },
-]
+];
+
+// Backend Select values (AID Recipient Family Member.relationship) -> Arabic.
+const RELATIONSHIP_AR: Record<string, string> = {
+  Son: 'ابن',
+  Daughter: 'ابنة',
+  Father: 'أب',
+  Mother: 'أم',
+};
+
+/** Cell value for a family member row; backend sends the name as `full_name`. */
+function childValue(row: Record<string, any>, key: string): string {
+  const raw = key === 'child_full_name' ? (row.child_full_name ?? row.full_name) : row[key];
+  if (raw == null || raw === '') return '—';
+  if (key === 'child_relationship') return RELATIONSHIP_AR[raw] ?? String(raw);
+  return String(raw);
+}
+
+/** Personal-info value; arrays (family_members) show their count, not "[object Object]". */
+function personalValue(recipient: Record<string, any>, key: string) {
+  const v = recipient[key];
+  if (Array.isArray(v)) return v.length > 0 ? v.length : null;
+  return v;
+}
 const copyToClipboard = async (value:string) => {
   if(!value)return
     await Clipboard.setStringAsync(value);
@@ -165,7 +188,6 @@ export default function RecipientDetailsScreen() {
       </SafeAreaView>
     );
   }
-console.log(recipient.family_members)
   const displayName = recipient.full_name ?? recipient.recipient_name ?? recipient.name;
   const familyMembers = Array.isArray(recipient.family_members) ? recipient.family_members : [];
   const sysKeys = ['name', 'id', 'owner', 'creation', 'modified', 'parent', 'parenttype', 'parentfield', 'docstatus', 'idx'];
@@ -201,7 +223,7 @@ console.log(recipient.family_members)
             <DetailRow
               key={f.key}
               label={f.label}
-              value={recipient[f.key]}
+              value={personalValue(recipient, f.key)}
               icon={f.icon}
             />
           ))}
@@ -246,7 +268,7 @@ console.log(recipient.family_members)
                       {CHILD_FIELDS.map((col) => (
                         <View key={col.key} className="min-w-[100px] flex-1">
                           <Text className="text-right text-sm text-white" numberOfLines={2}>
-                            {row[col.key] ?? '—'}
+                            {childValue(row, col.key)}
                           </Text>
                         </View>
                       ))}
