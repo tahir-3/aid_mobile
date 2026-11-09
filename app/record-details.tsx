@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { FieldsSection } from '../components/DetailSection';
 import { FadeInView } from '../components/motion/FadeInView';
 import { RecordIcon } from '../components/RecordIcon';
 import { describeApiError, type ApiErrorInfo } from '../lib/apiError';
@@ -14,8 +15,6 @@ import {
   RECORD_TYPES,
   setCachedRecord,
 } from '../lib/records';
-
-const isEmpty = (v: unknown) => v === null || v === undefined || v === '';
 
 function Header({ title, onBack }: { title: string; onBack: () => void }) {
   return (
@@ -159,32 +158,17 @@ export default function RecordDetailsScreen() {
           )}
         </FadeInView>
 
-        {config.sections.map((section, i) => {
-          const rows = section.fields.filter((f) => !isEmpty(doc[f.key]));
-          if (rows.length === 0) return null;
-          return (
-            <FadeInView
-              key={section.title}
-              delay={60 * (i + 1)}
-              className="mb-4 rounded-3xl border border-white/5 bg-surface p-5">
-              <Text className="mb-3 text-right text-base font-bold text-white">
-                {section.title}
-              </Text>
-              {rows.map((f, idx) => (
-                <View
-                  key={f.key}
-                  className={`flex-row-reverse items-start justify-between py-2.5 ${
-                    idx < rows.length - 1 ? 'border-b border-white/5' : ''
-                  }`}>
-                  <Text className="ml-4 text-sm text-slate-400">{f.label}</Text>
-                  <Text className="flex-1 text-left text-sm font-medium text-white" selectable>
-                    {String(doc[f.key])}
-                  </Text>
-                </View>
-              ))}
-            </FadeInView>
-          );
-        })}
+        {config.sections.map((section, i) => (
+          <FieldsSection
+            key={section.title}
+            title={section.title}
+            icon={section.icon}
+            color={config.color}
+            delay={60 * (i + 1)}
+            fields={section.fields}
+            data={doc}
+          />
+        ))}
       </ScrollView>
     </SafeAreaView>
   );

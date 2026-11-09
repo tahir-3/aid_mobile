@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getSyncedData, STORAGE_KEYS } from '../lib/sync';
+import { DetailRow, DetailSection } from '../components/DetailSection';
 
 // AID fields from sync.ts
 const AID_FIELDS = [
@@ -97,46 +98,36 @@ export default function AidDetailsScreen() {
               <Ionicons name="gift-outline" size={32} color="#FF6F20" />
             </View>
             <Text className="mt-3 text-lg font-bold text-white">{aid.name}</Text>
-            {aid.recipient && (
-              <Text className="mt-1 text-sm text-slate-400">{aid.recipient}</Text>
-            )}
+            {aid.recipient && <Text className="mt-1 text-sm text-slate-400">{aid.recipient}</Text>}
           </View>
         </View>
 
         {/* Aid fields */}
         <View className="px-4">
-          <View className="mb-4 flex-row items-center justify-end pr-1">
-            <Text className="mr-2 text-lg font-bold text-white">معلومات المساعدة</Text>
-            <Ionicons name="information-circle-outline" size={20} color="#2563EB" />
-          </View>
-
-          <View className="rounded-3xl border border-white/5 bg-surface p-5">
+          <DetailSection title="معلومات المساعدة" icon="information-circle-outline" color="#FF6F20">
             {AID_FIELDS.map((f, idx) => {
               const value = aid[f.key];
-              const isEligibility = f.key === 'eligibility_status';
+              const last = idx === AID_FIELDS.length - 1;
+              if (f.key === 'eligibility_status' && value) {
+                return (
+                  <DetailRow key={f.key} label={f.label} icon={f.icon} value={value} last={last}>
+                    <View className={`rounded-lg px-3 py-1 ${getStatusStyle(value)}`}>
+                      <Text className="text-xs font-bold">{value}</Text>
+                    </View>
+                  </DetailRow>
+                );
+              }
               return (
-                <View
+                <DetailRow
                   key={f.key}
-                  className={`flex-row items-center justify-between ${idx > 0 ? 'border-t border-white/5 pt-4 mt-4' : ''}`}>
-                  <View className="flex-1 flex-row items-center justify-end">
-                    {isEligibility && value ? (
-                      <View className={`rounded-lg px-3 py-1.5 ${getStatusStyle(value)}`}>
-                        <Text className="text-xs font-bold">{value}</Text>
-                      </View>
-                    ) : (
-                      <Text className="text-right font-bold text-white" numberOfLines={2}>
-                        {value ?? '—'}
-                      </Text>
-                    )}
-                  </View>
-                  <View className="mr-4 flex-row items-center gap-1">
-                    <Text className="ml-2 text-sm font-semibold text-emerald-500">{f.label}: </Text>
-                    <Ionicons name={f.icon} size={18} color="#94A3B8" />
-                  </View>
-                </View>
+                  label={f.label}
+                  icon={f.icon}
+                  value={value ?? '—'}
+                  last={last}
+                />
               );
             })}
-          </View>
+          </DetailSection>
         </View>
       </ScrollView>
     </SafeAreaView>
