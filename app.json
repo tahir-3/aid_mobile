@@ -4,10 +4,7 @@
     "slug": "AID",
     "version": "1.0.0",
     "scheme": "AID",
-    "platforms": [
-      "ios",
-      "android"
-    ],
+    "platforms": ["ios", "android"],
     "web": {
       "bundler": "metro",
       "output": "static",
@@ -37,9 +34,7 @@
       "resizeMode": "contain",
       "backgroundColor": "#143A6B"
     },
-    "assetBundlePatterns": [
-      "**/*"
-    ],
+    "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.anonymous.AID"
@@ -49,7 +44,15 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#143A6B"
       },
-      "package": "com.anonymous.AID"
-    }
+      "package": "com.mashro3amer.aid",
+      "versionCode": 1
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "6e15dc08-894c-4e9f-94ad-4ea1b96c9353"
+      }
+    },
+    "owner": "tahir_zaqout"
   }
 }
