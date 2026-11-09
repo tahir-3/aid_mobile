@@ -4,7 +4,13 @@ import { Stack, useRouter, useSegments } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { useAuthStore } from '../store/authStore';
 import { useSyncStore } from '../store/syncStore';
-import { ActivityIndicator } from 'react-native';
+import { ActivityIndicator, I18nManager } from 'react-native';
+
+// Screens are mirrored by hand (flex-row-reverse, text-right), so the layout must stay LTR.
+// Without this an Arabic-language device flips everything back to left-to-right.
+// app.json also sets expo-localization `supportsRTL: false` (native side, needs a rebuild).
+I18nManager.allowRTL(false);
+I18nManager.forceRTL(false);
 
 export const unstable_settings = {
   // Ensure that reloading on `/modal` keeps a back button present.
