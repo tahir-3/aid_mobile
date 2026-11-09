@@ -70,6 +70,15 @@ const RecipientCard = React.memo(
     const displayName = item.full_name ?? item.recipient_name ?? item.name;
     const statusStyle = getStatusStyle(item.status);
     const isPendingSync = item.created_locally === true || item.synced === false;
+    // Synced recipients use Frappe field names (id_no, jawwal_no); keep the old keys as fallback.
+    const idNo = item.id_no ?? item.national_id;
+    const phone = item.jawwal_no ?? item.mobile;
+    const childrenCount = Array.isArray(item.family_members) ? item.family_members.length : 0;
+    const chips = [
+      item.number_of_family_members ? `${item.number_of_family_members} أفراد` : null,
+      childrenCount ? `${childrenCount} أطفال` : null,
+      item.displaced_resident || null,
+    ].filter(Boolean) as string[];
     return (
       <TouchableOpacity
         activeOpacity={0.7}
@@ -122,9 +131,9 @@ const RecipientCard = React.memo(
 
         {/* Details */}
         <View className="space-y-2">
-          {item.national_id && (
+          {idNo && (
             <View className="flex-row items-center justify-end">
-              <Text className="mr-2 text-sm text-slate-300">{item.national_id}</Text>
+              <Text className="mr-2 text-sm text-slate-300">{idNo}</Text>
               <Text className="mr-2 text-sm text-slate-500">رقم الهوية:</Text>
               <Ionicons name="card-outline" size={16} color="#94A3B8" />
             </View>
@@ -140,14 +149,24 @@ const RecipientCard = React.memo(
             </View>
           )}
 
-          {item.mobile && (
+          {phone && (
             <View className="mt-2 flex-row items-center justify-end">
-              <Text className="mr-2 text-sm text-slate-300">{item.mobile}</Text>
+              <Text className="mr-2 text-sm text-slate-300">{phone}</Text>
               <Text className="mr-2 text-sm text-slate-500">الجوال:</Text>
               <Ionicons name="phone-portrait-outline" size={16} color="#94A3B8" />
             </View>
           )}
         </View>
+
+        {chips.length > 0 && (
+          <View className="mt-3 flex-row-reverse flex-wrap gap-1.5 border-t border-white/5 pt-3">
+            {chips.map((text) => (
+              <View key={text} className="rounded-lg bg-white/5 px-2 py-0.5">
+                <Text className="text-[11px] font-bold text-slate-300">{text}</Text>
+              </View>
+            ))}
+          </View>
+        )}
       </TouchableOpacity>
     );
   }

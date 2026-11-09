@@ -62,7 +62,13 @@ const RecordCard = React.memo(
     onPress: (name: string) => void;
     onAids: (item: Record<string, any>) => void;
   }) => {
-    const badge = item[config.badge.key];
+    const badges = config.badges
+      .map((b) => {
+        const v = item[b.key];
+        if (v === null || v === undefined || v === '' || v === 0) return null;
+        return [b.prefix, v, b.suffix].filter(Boolean).join(' ');
+      })
+      .filter(Boolean) as string[];
     const subtitle = item[config.subtitle.key];
     const isDraft = item.docstatus === 0;
 
@@ -93,16 +99,25 @@ const RecordCard = React.memo(
               </>
             ) : null}
           </View>
-          <View className="mt-2 flex-row-reverse items-center gap-2">
-            {badge ? (
+          {item.jawwal_no ? (
+            <View className="mt-1 flex-row-reverse items-center">
+              <Ionicons name="call-outline" size={12} color="#94A3B8" style={{ marginLeft: 4 }} />
+              <Text className="text-xs text-slate-400">{item.jawwal_no}</Text>
+            </View>
+          ) : null}
+          <View className="mt-2 flex-row-reverse flex-wrap items-center gap-1.5">
+            {badges.map((text, i) => (
               <View
-                className="rounded-lg px-2 py-0.5"
-                style={{ backgroundColor: `${config.color}1A` }}>
-                <Text className="text-[11px] font-bold" style={{ color: config.color }}>
-                  {badge}
+                key={text}
+                className={`rounded-lg px-2 py-0.5 ${i === 0 ? '' : 'bg-white/5'}`}
+                style={i === 0 ? { backgroundColor: `${config.color}1A` } : undefined}>
+                <Text
+                  className={`text-[11px] font-bold ${i === 0 ? '' : 'text-slate-300'}`}
+                  style={i === 0 ? { color: config.color } : undefined}>
+                  {text}
                 </Text>
               </View>
-            ) : null}
+            ))}
             {isDraft && (
               <View className="rounded-lg bg-slate-700/40 px-2 py-0.5">
                 <Text className="text-[11px] text-slate-400">مسودة</Text>

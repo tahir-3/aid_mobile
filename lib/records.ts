@@ -22,6 +22,14 @@ export interface FieldDef {
   label: string;
 }
 
+export interface BadgeDef {
+  key: string;
+  /** Text before the value, e.g. "أيتام:". */
+  prefix?: string;
+  /** Text after the value, e.g. "أفراد". */
+  suffix?: string;
+}
+
 export interface RecordTypeConfig {
   key: RecordTypeKey;
   doctype: string;
@@ -33,10 +41,10 @@ export interface RecordTypeConfig {
   listFields: string[];
   /** Secondary line on the list card. */
   subtitle: FieldDef;
-  /** Highlighted chip on the list card. */
-  badge: FieldDef;
+  /** Chips on the list card, in order; empty values are skipped. */
+  badges: BadgeDef[];
   /** Grouped fields on the details screen. */
-  sections: { title: string; fields: FieldDef[] }[];
+  sections: { title: string; icon: IconName; fields: FieldDef[] }[];
 }
 
 const COMMON_FIELDS: FieldDef[] = [
@@ -70,15 +78,22 @@ export const RECORD_TYPES: Record<RecordTypeKey, RecordTypeConfig> = {
       'full_name',
       'id_no',
       'branch',
+      'jawwal_no',
+      'number_of_family_members',
       'type_of_injury',
       'injury_level',
       'docstatus',
     ],
     subtitle: { key: 'branch', label: 'الفرع' },
-    badge: { key: 'type_of_injury', label: 'نوع الإصابة' },
+    badges: [
+      { key: 'type_of_injury' },
+      { key: 'injury_level', prefix: 'إصابة' },
+      { key: 'number_of_family_members', suffix: 'أفراد' },
+    ],
     sections: [
       {
         title: 'البيانات الشخصية',
+        icon: 'person-outline',
         fields: [
           ...COMMON_FIELDS,
           { key: 'gender', label: 'الجنس' },
@@ -87,6 +102,7 @@ export const RECORD_TYPES: Record<RecordTypeKey, RecordTypeConfig> = {
       },
       {
         title: 'بيانات الإصابة',
+        icon: 'bandage-outline',
         fields: [
           { key: 'type_of_injury', label: 'نوع الإصابة' },
           { key: 'injury_level', label: 'درجة الإصابة' },
@@ -114,7 +130,7 @@ export const RECORD_TYPES: Record<RecordTypeKey, RecordTypeConfig> = {
           { key: 'injury_details', label: 'تفاصيل الإصابة' },
         ],
       },
-      { title: 'البيانات البنكية', fields: BANK_FIELDS },
+      { title: 'البيانات البنكية', icon: 'wallet-outline', fields: BANK_FIELDS },
     ],
   },
   martyrs: {
@@ -129,15 +145,22 @@ export const RECORD_TYPES: Record<RecordTypeKey, RecordTypeConfig> = {
       'full_name',
       'id_no',
       'branch',
+      'jawwal_no',
+      'family_members_count',
       'date_of_martyrdom',
       'orphans_number',
       'docstatus',
     ],
     subtitle: { key: 'branch', label: 'الفرع' },
-    badge: { key: 'date_of_martyrdom', label: 'تاريخ الاستشهاد' },
+    badges: [
+      { key: 'date_of_martyrdom', prefix: 'استشهد' },
+      { key: 'orphans_number', prefix: 'أيتام:' },
+      { key: 'family_members_count', suffix: 'أفراد' },
+    ],
     sections: [
       {
         title: 'بيانات الشهيد',
+        icon: 'person-outline',
         fields: [
           ...COMMON_FIELDS,
           { key: 'date_of_birth', label: 'تاريخ الميلاد' },
@@ -151,6 +174,7 @@ export const RECORD_TYPES: Record<RecordTypeKey, RecordTypeConfig> = {
       },
       {
         title: 'بيانات الزوجة',
+        icon: 'people-circle-outline',
         fields: [
           { key: 'wife_full_name', label: 'الاسم الكامل' },
           { key: 'wife_id_no', label: 'رقم الهوية' },
@@ -165,6 +189,7 @@ export const RECORD_TYPES: Record<RecordTypeKey, RecordTypeConfig> = {
       },
       {
         title: 'بيانات الوصي',
+        icon: 'shield-checkmark-outline',
         fields: [
           { key: 'guardian_full_name', label: 'الاسم الكامل' },
           { key: 'guardianid_no', label: 'رقم الهوية' },
@@ -173,7 +198,7 @@ export const RECORD_TYPES: Record<RecordTypeKey, RecordTypeConfig> = {
           { key: 'guardians_address', label: 'العنوان' },
         ],
       },
-      { title: 'البيانات البنكية', fields: BANK_FIELDS },
+      { title: 'البيانات البنكية', icon: 'wallet-outline', fields: BANK_FIELDS },
     ],
   },
   prisoners: {
@@ -188,15 +213,23 @@ export const RECORD_TYPES: Record<RecordTypeKey, RecordTypeConfig> = {
       'full_name',
       'id_no',
       'branch',
+      'jawwal_no',
+      'number_of_family_members',
       'date_of_captivity',
       'date_of_release',
+      'patient_status',
       'docstatus',
     ],
     subtitle: { key: 'branch', label: 'الفرع' },
-    badge: { key: 'date_of_captivity', label: 'تاريخ الأسر' },
+    badges: [
+      { key: 'date_of_captivity', prefix: 'أسر' },
+      { key: 'date_of_release', prefix: 'إفراج' },
+      { key: 'patient_status' },
+    ],
     sections: [
       {
         title: 'بيانات الأسير',
+        icon: 'person-outline',
         fields: [
           ...COMMON_FIELDS,
           { key: 'gender', label: 'الجنس' },
@@ -206,6 +239,7 @@ export const RECORD_TYPES: Record<RecordTypeKey, RecordTypeConfig> = {
       },
       {
         title: 'بيانات الأسر',
+        icon: 'lock-closed-outline',
         fields: [
           { key: 'date_of_captivity', label: 'تاريخ الأسر' },
           { key: 'date_of_release', label: 'تاريخ الإفراج' },
@@ -216,13 +250,14 @@ export const RECORD_TYPES: Record<RecordTypeKey, RecordTypeConfig> = {
       },
       {
         title: 'بيانات الزوجة',
+        icon: 'people-circle-outline',
         fields: [
           { key: 'wife_full_name', label: 'الاسم الكامل' },
           { key: 'wife_id_no', label: 'رقم الهوية' },
           { key: 'wife_date_of_birth', label: 'تاريخ الميلاد' },
         ],
       },
-      { title: 'البيانات البنكية', fields: BANK_FIELDS },
+      { title: 'البيانات البنكية', icon: 'wallet-outline', fields: BANK_FIELDS },
     ],
   },
 };
